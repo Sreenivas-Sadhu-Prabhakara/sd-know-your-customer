@@ -1,0 +1,14 @@
+apiVersion: v2
+name: sd-know-your-customer
+description: "BIAN Service Domain: Know Your Customer (Process pattern, Risk and Compliance)"
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - bian
+  - process
+annotations:
+  bian/business-area: "Risk and Compliance"
+  bian/business-domain: "Financial Crime"
+  bian/asset-type: "KYC Assessment"
+  bian/control-record: "KYC Assessment Procedure"
