@@ -14,7 +14,7 @@ management:
   endpoint:
     health:
       probes:
-        enabled: true   # /actuator/health/liveness + /readiness for K8s probes
+        enabled: true
   info:
     env:
       enabled: true
@@ -27,6 +27,17 @@ info:
     functionalPattern: "Process"
     assetType: "KYC Assessment"
     controlRecord: "KYC Assessment Procedure"
+    phase: "2b-deep"
+
+bian:
+  kyc:
+    # Documents every assessment must include; missing → REFERRED.
+    required-documents: ID,ADDRESS
+    # Jurisdictions requiring enhanced due diligence; hit → REFERRED.
+    high-risk-countries: KP,IR
+    # Seed sanctions/PEP watchlist (comma-separated customer refs); hit → REJECTED.
+    # Runtime additions: POST /v1/kyc-assessment-procedure/watchlist
+    watchlist: ""
 
 resilience4j:
   circuitbreaker:

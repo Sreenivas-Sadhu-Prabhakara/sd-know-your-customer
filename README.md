@@ -1,55 +1,41 @@
 # Know Your Customer
 
-BIAN Service Domain microservice — part of the [bian-platform](../../bian-platform/) landscape.
+BIAN Service Domain microservice — **Phase 2b-c DEEP build** (graduated; see `.bian-graduated`). One of the three **flagship** counterparties (KYC).
 
 | | |
 |---|---|
-| **Business Area** | Risk and Compliance |
-| **Business Domain** | Financial Crime |
-| **Functional Pattern** | Process |
-| **Asset Type** | KYC Assessment |
-| **Control Record** | KYC Assessment Procedure |
+| **Business Area / Domain** | Risk and Compliance / Financial Crime |
+| **Pattern / Control Record** | Process / KYC Assessment Procedure |
 | **K8s Namespace** | `bian-risk-compliance` |
-| **Stack** | Java 21 · Spring Boot 3 · Resilience4j · Cilium mesh |
 
-> ⚠️ **Phase 1 (shallow):** real REST API over an in-memory store. Phase 2 replaces the store with per-domain persistence and real domain logic. This repo was stamped from `bian-platform/generator` — regenerate rather than hand-editing boilerplate.
+## The screening pipeline (precedence order)
 
-## BIAN Semantic API
-
-| Method | Path | BIAN action term |
+| Check | Outcome | Why |
 |---|---|---|
-| GET | `/v1/service-domain` | — (SD metadata) |
-| POST | `/v1/kyc-assessment-procedure/initiate` | Initiate |
-| GET | `/v1/kyc-assessment-procedure` | Retrieve (list) |
-| GET | `/v1/kyc-assessment-procedure/{crId}/retrieve` | Retrieve |
-| PUT | `/v1/kyc-assessment-procedure/{crId}/update` | Update |
-| PUT | `/v1/kyc-assessment-procedure/{crId}/control` | Control — body `{"action": "suspend"\|"resume"\|"terminate"}` |
+| Watchlist hit (sanctions/PEP) | **REJECTED** — terminal, not API-overridable | hard fail |
+| Missing required documents (`ID`, `ADDRESS` by default) | **REFERRED** | incompleteness is a follow-up, not a rejection |
+| High-risk jurisdiction (`KP`, `IR` by default) | **REFERRED** | enhanced due diligence is a human decision |
+| Otherwise | **APPROVED** | |
 
-OpenAPI UI: `/swagger-ui.html` · Health: `/actuator/health` · Metrics: `/actuator/prometheus`
+REFERRED cases are decided by an analyst via `PUT /{id}/control` — **reason mandatory** (audit requirement), recorded as `ANALYST:<reason>`.
 
-**API contract:** [`api/openapi.yaml`](api/openapi.yaml) — owned by **this repo** (contract-per-repo; no central contracts repo). The runtime spec at `/v3/api-docs` must stay compatible with it; Phase 2 adds contract tests that enforce this.
+## Flagship wiring (closing the KYC loop)
 
-## Run locally
+- Consumes `kyc.check.requested` (account openings) — **via `POST /initiate` over HTTP today**, Kafka consumer later.
+- Publishes `kyc.assessment.completed` on `bian.kyc.assessment`.
+- **Callback bridge:** when the check request carries a `callbackUrl`, the verdict is delivered as `PUT {approved, reason}` — exactly the account SDs' `kyc-result` shape. Callback failure never loses the assessment (recorded as `kyc.callback.failed`, re-deliverable).
+- **To go live end-to-end:** point account SDs at this service with their callback URL and flip their `bian.kyc.auto-approve=false`.
 
 ```bash
 mvn spring-boot:run
-curl localhost:8080/v1/service-domain
-
-# lifecycle smoke test
-curl -X POST localhost:8080/v1/kyc-assessment-procedure/initiate -H 'content-type: application/json' -d '{"note":"hello"}'
+CR=/v1/kyc-assessment-procedure
+curl -s -X POST localhost:8080$CR/initiate -H 'content-type: application/json' \
+  -d '{"customerReference":"C-1","countryCode":"IN","documents":["ID","ADDRESS"]}'
+# → {"status":"APPROVED","reasons":["CLEAN"],…}
 ```
 
-## Build & containerize
+Contracts owned by this repo: [`api/openapi.yaml`](api/openapi.yaml) · [`api/events.yaml`](api/events.yaml). Watchlist maintenance lives here pragmatically for the flagship; BIAN purists would carve it into its own SD later.
 
-```bash
-mvn -B verify
-docker build -t bian/sd-know-your-customer:0.1.0 .
-```
+## Persistence & tests
 
-## Deploy (Helm → K8s with Cilium mesh)
-
-```bash
-helm upgrade --install sd-know-your-customer ./helm -n bian-risk-compliance
-```
-
-Exposed through the platform Gateway at path prefix `/sd-know-your-customer` (Cilium Gateway API). Mesh policy (`CiliumNetworkPolicy`) allows: gateway ingress, same-area peers, Prometheus — everything else denied.
+In-memory port/adapter; watchlist seeds from `bian.kyc.watchlist` config. Postgres staged in [`db/schema.sql`](db/schema.sql) — gated. `mvn verify` proves each screening rule, precedence, the analyst flow (incl. the audit-reason requirement), and callback delivery/failure semantics.

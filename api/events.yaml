@@ -1,0 +1,18 @@
+# Event contract — owned by THIS repo. Topic catalog: bian-platform/platform-infra/kafka/topics.yaml
+service: sd-know-your-customer
+publishes:
+  - topic: bian.kyc.assessment        # FLAGSHIP KYC FLOW
+    events:
+      - type: kyc.assessment.completed   # consumed by account SDs → kyc-result
+        payload: [assessmentId, customerReference, accountRef, outcome, reasons]
+      - type: kyc.assessment.referred
+        payload: [assessmentId, customerReference, reasons]
+      - type: kyc.callback.delivered     # HTTP-bridge delivery audit
+        payload: [assessmentId, callbackUrl]
+      - type: kyc.callback.failed
+        payload: [assessmentId, callbackUrl]
+consumes:
+  - topic: bian.kyc.check
+    events:
+      - type: kyc.check.requested        # → POST /initiate (HTTP bridge today, consumer later)
+        from: sd-current-account, sd-savings-account
